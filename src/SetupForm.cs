@@ -1,20 +1,18 @@
 using System;
 using System.Drawing;
-using System.IO;
-using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using System.Diagnostics;
+
 namespace FolderPainter
 {
     /// <summary>
-    /// Shown when the app is launched without a folder argument.
-    /// Lets the user register or unregister the right-click context menu entry.
+    /// Setup form: shown when app is launched without a folder argument.
+    /// Registers or unregisters the cascading right-click context menu.
     /// </summary>
     public class SetupForm : Form
     {
-        private Label  _statusLabel;
-        private bool   _registered;
+        private Label _statusLabel;
 
         public SetupForm()
         {
@@ -24,40 +22,39 @@ namespace FolderPainter
 
         private void BuildUI()
         {
-            Text          = "Folder Painter – Setup";
-            Size          = new Size(420, 300);
-            MinimumSize   = Size;
-            MaximumSize   = Size;
-            StartPosition = FormStartPosition.CenterScreen;
-            BackColor     = Color.FromArgb(30, 30, 30);
-            ForeColor     = Color.White;
-            Font          = new Font("Segoe UI", 9f);
+            Text            = "Folder Painter – Setup";
+            Size            = new Size(440, 310);
+            MinimumSize     = Size;
+            MaximumSize     = Size;
+            StartPosition   = FormStartPosition.CenterScreen;
+            BackColor       = Color.FromArgb(30, 30, 30);
+            ForeColor       = Color.White;
+            Font            = new Font("Segoe UI", 9f);
             FormBorderStyle = FormBorderStyle.FixedSingle;
-            Icon = SystemIcons.Application;
+            Icon            = SystemIcons.Application;
 
-            // Title
-            var title = new Label
+            Controls.Add(new Label
             {
-                Text     = "🎨  Folder Painter",
-                Font     = new Font("Segoe UI", 14f, FontStyle.Bold),
+                Text      = "🎨  Folder Painter",
+                Font      = new Font("Segoe UI", 14f, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize  = true,
                 Location  = new Point(20, 18)
-            };
-            Controls.Add(title);
-
-            var sub = new Label
+            });
+            Controls.Add(new Label
             {
-                Text      = "Add \"Paint Folder\" to your right-click menu",
+                Text      = "Right-click any folder  →  🎨 Paint Folder  →  pick a color instantly",
                 Font      = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(150, 150, 150),
                 AutoSize  = true,
                 Location  = new Point(20, 46)
-            };
-            Controls.Add(sub);
-
-            var sep = new Panel { BackColor = Color.FromArgb(60,60,60), Location = new Point(20,68), Size = new Size(370,1) };
-            Controls.Add(sep);
+            });
+            Controls.Add(new Panel
+            {
+                BackColor = Color.FromArgb(60, 60, 60),
+                Location  = new Point(20, 68),
+                Size      = new Size(390, 1)
+            });
 
             _statusLabel = new Label
             {
@@ -65,59 +62,58 @@ namespace FolderPainter
                 Font      = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(200, 200, 200),
                 AutoSize  = false,
-                Size      = new Size(370, 60),
+                Size      = new Size(390, 60),
                 Location  = new Point(20, 82)
             };
             Controls.Add(_statusLabel);
 
             // Register button
-            var regBtn = new FlatButton("Register (Add to right-click menu)")
+            var regBtn = new FlatButton("Register  (Add color submenu to right-click)")
             {
-                Location   = new Point(20, 155),
-                Size       = new Size(370, 34),
+                Location    = new Point(20, 160),
+                Size        = new Size(390, 34),
                 AccentColor = Color.FromArgb(0, 130, 100)
             };
             regBtn.Click += OnRegisterClick;
             Controls.Add(regBtn);
 
             // Unregister button
-            var unregBtn = new FlatButton("Unregister (Remove from right-click menu)")
+            var unregBtn = new FlatButton("Unregister  (Remove from right-click menu)")
             {
-                Location   = new Point(20, 200),
-                Size       = new Size(370, 34),
+                Location    = new Point(20, 204),
+                Size        = new Size(390, 34),
                 AccentColor = Color.FromArgb(120, 40, 40)
             };
             unregBtn.Click += OnUnregisterClick;
             Controls.Add(unregBtn);
 
-            var note = new Label
+            Controls.Add(new Label
             {
                 Text      = "⚠  Run as Administrator if registration fails.",
                 Font      = new Font("Segoe UI", 8f),
                 ForeColor = Color.FromArgb(180, 150, 60),
                 AutoSize  = true,
-                Location  = new Point(20, 246)
-            };
-            Controls.Add(note);
+                Location  = new Point(20, 254)
+            });
         }
 
         private void RefreshStatus()
         {
             try
             {
-                using var key = Registry.ClassesRoot.OpenSubKey(@"Directory\shell\FolderPainter");
-                _registered = (key != null);
-                if (_registered)
+                using var key = Registry.ClassesRoot.OpenSubKey(@"Directory\shell\FolderPainterMenu");
+                bool registered = (key != null);
+                if (registered)
                 {
                     _statusLabel.ForeColor = Color.FromArgb(80, 200, 120);
                     _statusLabel.Text = "✔  Context menu is REGISTERED.\n" +
-                                        "Right-click any folder → \"🎨 Paint Folder\" to open.";
+                                        "Right-click any folder  →  🎨 Paint Folder  →  choose a color.";
                 }
                 else
                 {
                     _statusLabel.ForeColor = Color.FromArgb(200, 100, 80);
                     _statusLabel.Text = "✘  Context menu is NOT registered.\n" +
-                                        "Click \"Register\" below to add it.";
+                                        "Click \"Register\" below to add the color submenu.";
                 }
             }
             catch
@@ -131,18 +127,23 @@ namespace FolderPainter
             try
             {
                 RegisterContextMenu();
-                MessageBox.Show("Registered successfully!\n\nRight-click any folder and choose \"🎨 Paint Folder\".",
+                MessageBox.Show(
+                    "Registered successfully!\n\n" +
+                    "Right-click any folder and choose:\n" +
+                    "🎨 Paint Folder  ►  select a color",
                     "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RefreshStatus();
             }
             catch (UnauthorizedAccessException)
             {
-                MessageBox.Show("Access denied.\n\nPlease run FolderPainter.exe as Administrator to register the context menu.",
+                MessageBox.Show(
+                    "Access denied.\n\nPlease run FolderPainter.exe as Administrator to register.",
                     "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error: " + ex.Message, "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error: " + ex.Message, "Folder Painter",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -157,34 +158,70 @@ namespace FolderPainter
             }
             catch (UnauthorizedAccessException)
             {
-                MessageBox.Show("Access denied.\n\nPlease run FolderPainter.exe as Administrator.",
+                MessageBox.Show(
+                    "Access denied.\n\nPlease run FolderPainter.exe as Administrator.",
                     "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error: " + ex.Message, "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Error: " + ex.Message, "Folder Painter",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        // ── Registry helpers ─────────────────────────────────────────────
+        // ── Registry Helpers ─────────────────────────────────────────────────
+
         private static void RegisterContextMenu()
         {
-            // Path to this EXE
             string exePath = Process.GetCurrentProcess().MainModule.FileName;
+            string quoted  = $"\"{exePath}\"";
 
-            // HKCR\Directory\shell\FolderPainter
-            using var shellKey = Registry.ClassesRoot.CreateSubKey(@"Directory\shell\FolderPainter");
-            shellKey.SetValue("", "🎨 Paint Folder");
-            shellKey.SetValue("Icon", $"\"{exePath}\",0");
+            // ── Parent flyout key ──────────────────────────────────────────
+            // SubCommands = "" tells Windows to build the flyout from nested shell subkeys
+            using var parent = Registry.ClassesRoot.CreateSubKey(@"Directory\shell\FolderPainterMenu");
+            parent.SetValue("MUIVerb", "🎨 Paint Folder");
+            parent.SetValue("SubCommands", "");
+            parent.SetValue("Icon", $"{quoted},0");
 
-            // HKCR\Directory\shell\FolderPainter\command
-            using var cmdKey = shellKey.CreateSubKey("command");
-            cmdKey.SetValue("", $"\"{exePath}\" \"%1\"");
+            using var shell = parent.CreateSubKey("shell");
+
+            // ── 00: Restore default (remove icon) ─────────────────────────
+            CreateSubCommand(shell, "00_Reset", "↩ Restore Default",
+                $"{quoted} \"%1\" --reset");
+
+            // ── Color presets ──────────────────────────────────────────────
+            int i = 1;
+            foreach (var preset in FolderIconEngine.Presets)
+            {
+                CreateSubCommand(shell,
+                    $"{i:D2}_{preset.Name}",
+                    $"{preset.Emoji} {preset.Display}",
+                    $"{quoted} \"%1\" --color {preset.Name}");
+                i++;
+            }
+
+            // ── Last: open full UI ─────────────────────────────────────────
+            CreateSubCommand(shell, "99_More", "🖌 More Options...",
+                $"{quoted} \"%1\"");
+        }
+
+        private static void CreateSubCommand(RegistryKey shell, string keyName,
+                                             string label, string command)
+        {
+            using var key = shell.CreateSubKey(keyName);
+            key.SetValue("MUIVerb", label);
+            using var cmd = key.CreateSubKey("command");
+            cmd.SetValue("", command);
         }
 
         private static void UnregisterContextMenu()
         {
-            Registry.ClassesRoot.DeleteSubKeyTree(@"Directory\shell\FolderPainter", throwOnMissingSubKey: false);
+            // Remove new cascading key
+            Registry.ClassesRoot.DeleteSubKeyTree(@"Directory\shell\FolderPainterMenu",
+                throwOnMissingSubKey: false);
+            // Also remove old single-entry key if it existed from a previous install
+            Registry.ClassesRoot.DeleteSubKeyTree(@"Directory\shell\FolderPainter",
+                throwOnMissingSubKey: false);
         }
     }
 }
