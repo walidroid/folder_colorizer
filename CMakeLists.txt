@@ -17,11 +17,8 @@ add_compile_definitions(
 # GUI subsystem — no console window
 add_executable(folder_colorizer WIN32
     src/main.cpp
-    src/app.rc          # version info + app icon (auto-created if missing)
+    src/app.rc
 )
-
-# Resource file is optional; if it doesn't exist yet CMake will just warn
-set_source_files_properties(src/app.rc PROPERTIES GENERATED TRUE)
 
 target_link_libraries(folder_colorizer PRIVATE
     comctl32
