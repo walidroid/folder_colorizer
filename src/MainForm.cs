@@ -275,13 +275,13 @@ namespace FolderPainter
             using (var darkBrush = new SolidBrush(Color.FromArgb(80, shadow)))
             {
                 var shadowRect = new RectangleF(w * 0.06f + 2, bodyY + 3, w * 0.88f, bodyH);
-                g.FillRectangle(darkBrush, RoundRect(shadowRect, size * 0.04f));
+                g.FillPath(darkBrush, RoundRect(shadowRect, size * 0.04f));
             }
 
             // Tab (top flap)
             using var fillBrush = new SolidBrush(ControlPaint.Light(fill, 0.15f));
             var tabRect = new RectangleF(w * 0.05f, h * 0.10f, tabW, tabH + 4);
-            g.FillRectangle(fillBrush, RoundRect(tabRect, size * 0.04f));
+            g.FillPath(fillBrush, RoundRect(tabRect, size * 0.04f));
 
             // Body
             var bodyRect = new RectangleF(w * 0.05f, bodyY, w * 0.90f, bodyH);
@@ -289,7 +289,7 @@ namespace FolderPainter
                 new PointF(0, bodyY), new PointF(0, bodyY + bodyH),
                 ControlPaint.Light(fill, 0.1f), shadow))
             {
-                g.FillRectangle(grad, RoundRect(bodyRect, size * 0.06f));
+                g.FillPath(grad, RoundRect(bodyRect, size * 0.06f));
             }
 
             // Texture overlay
@@ -300,7 +300,7 @@ namespace FolderPainter
                 new PointF(0, bodyY), new PointF(0, bodyY + bodyH * 0.45f),
                 Color.FromArgb(60, Color.White), Color.Transparent))
             {
-                g.FillRectangle(sheen, RoundRect(new RectangleF(bodyRect.X, bodyRect.Y, bodyRect.Width, bodyRect.Height * 0.45f), size * 0.06f));
+                g.FillPath(sheen, RoundRect(new RectangleF(bodyRect.X, bodyRect.Y, bodyRect.Width, bodyRect.Height * 0.45f), size * 0.06f));
             }
 
             return bmp;
