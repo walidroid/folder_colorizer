@@ -421,6 +421,9 @@ enum {
 //  Swatch owner-draw button
 // ═══════════════════════════════════════════════════════════════════════════════
 
+static LRESULT CALLBACK DarkStaticProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                        UINT_PTR, DWORD_PTR);
+
 static LRESULT CALLBACK SwatchProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                                     UINT_PTR, DWORD_PTR dwRef)
 {
