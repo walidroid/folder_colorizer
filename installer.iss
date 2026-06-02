@@ -6,7 +6,7 @@
 ;    iscc installer.iss
 ;
 ;  Prerequisites (handled by GitHub Actions):
-;    • PyInstaller already built folder_colorizer.exe into dist\
+;    • CMake already built folder_colorizer.exe into build\Release\
 ;    • Icons live in icons\
 ; ============================================================
 
@@ -49,8 +49,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 ; ── Files ─────────────────────────────────────────────────────────────────────
 [Files]
-; Main executable produced by PyInstaller
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Main executable produced by CMake/MSVC
+Source: "build\Release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 ; All colour / texture icons
 Source: "icons\*"; DestDir: "{app}\icons"; Flags: ignoreversion recursesubdirs

@@ -7,34 +7,26 @@ echo   Folder Colorizer — Setup
 echo ============================================
 echo.
 
-:: Check for Python
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Python not found. Please install Python 3.10+ from https://python.org
+:: Locate the EXE next to this script
+set "EXE=%~dp0folder_colorizer.exe"
+
+if not exist "%EXE%" (
+    echo [ERROR] folder_colorizer.exe not found in:
+    echo         %~dp0
+    echo.
+    echo Please run the installer from the folder containing folder_colorizer.exe.
     pause
     exit /b 1
 )
 
-echo [1/3] Python found.
+echo [1/2] Found folder_colorizer.exe
+echo.
 
-:: Install Pillow if not present (needed to regenerate icons if missing)
-python -c "import PIL" >nul 2>&1
-if errorlevel 1 (
-    echo [2/3] Installing Pillow...
-    pip install Pillow --quiet
-) else (
-    echo [2/3] Pillow already installed.
-)
-
-:: Regenerate icons if the icons directory is empty or missing
-if not exist "%~dp0icons\yellow.ico" (
-    echo [2b] Generating folder icons...
-    python "%~dp0generate_icons.py"
-)
-
-:: Run the installer with admin rights
-echo [3/3] Installing right-click context menu...
-python "%~dp0folder_colorizer.py"
+:: Launch the app — it handles context-menu install when run as Admin
+echo [2/2] Launching Folder Colorizer...
+echo        (The app will prompt you to install the right-click context menu.)
+echo.
+"%EXE%"
 
 echo.
 echo Done! Right-click any folder in Explorer to use Folder Colorizer.

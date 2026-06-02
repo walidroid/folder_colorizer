@@ -19,54 +19,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python ────────────────────────────────────────────────────
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      # ── 3. Install dependencies ─────────────────────────────────────────────
-      - name: Install Python dependencies
+      # ── 2. Configure MSVC environment ────────────────────────────────────────
+      #    windows-latest ships with Visual Studio Build Tools pre-installed.
+      #    The cmake action handles PATH/VCVARS automatically.
+      - name: Configure CMake (Release, x64)
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller pillow
+          cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+        shell: pwsh
 
-      # ── 4. Generate icons (in case they are missing from the repo) ──────────
-      - name: Generate icons
-        run: python generate_icons.py
-        continue-on-error: true   # skip gracefully if icons already committed
+      # ── 3. Build EXE ─────────────────────────────────────────────────────────
+      - name: Build with CMake
+        run: |
+          cmake --build build --config Release --parallel
+        shell: pwsh
 
-      # ── 5. Build standalone EXE with PyInstaller ────────────────────────────
-      - name: Build EXE with PyInstaller
-        run: >
-          pyinstaller
-          --onefile
-          --windowed
-          --name folder_colorizer
-          --icon icons/orange.ico
-          --add-data "icons;icons"
-          folder_colorizer.py
+      # ── 4. Verify the EXE exists ─────────────────────────────────────────────
+      - name: Verify EXE
+        run: |
+          if (!(Test-Path "build\Release\folder_colorizer.exe")) {
+            Write-Error "Build output not found!"
+            exit 1
+          }
+          Write-Host "Build succeeded: build\Release\folder_colorizer.exe"
+        shell: pwsh
 
-      # ── 6. Install Inno Setup ───────────────────────────────────────────────
+      # ── 5. Install Inno Setup ────────────────────────────────────────────────
       - name: Install Inno Setup 6
-        run: |
-          choco install innosetup --yes --no-progress
-        shell: powershell
+        run: choco install innosetup --yes --no-progress
+        shell: pwsh
 
-      # ── 7. Compile the installer ────────────────────────────────────────────
+      # ── 6. Compile the installer ─────────────────────────────────────────────
       - name: Compile installer with Inno Setup
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-        shell: powershell
+        shell: pwsh
 
-      # ── 8. Zip the installer for release upload ────────────────────────────
+      # ── 7. Zip the installer ─────────────────────────────────────────────────
       - name: Zip installer
         run: |
           Compress-Archive -Path output\FolderColorizer-Setup-*.exe `
                            -DestinationPath output\FolderColorizer-Setup.zip
-        shell: powershell
+        shell: pwsh
 
-      # ── 9. Upload as Actions artifact (accessible from the workflow run) ────
+      # ── 8. Upload as Actions artifact ────────────────────────────────────────
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -74,9 +69,8 @@ jobs:
           path: output\FolderColorizer-Setup.zip
           retention-days: 30
 
-      # ── 10. Publish / update the rolling "latest" release ────────────────────
-      #        Runs on every push to main/master so the Releases page always
-      #        shows the newest build even without a version tag.
+      # ── 9. Publish rolling "latest" release ──────────────────────────────────
+      #       Runs on every push to main/master (no version tag).
       - name: Publish rolling "latest" release
         if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -88,11 +82,13 @@ jobs:
 
             Download `FolderColorizer-Setup.zip`, extract it, and run the `.exe` installer.
             This release always contains the most recent successful build.
+
+            **Built with:** MSVC (Visual Studio, windows-latest runner) — no Python required.
           prerelease: true
           files: output\FolderColorizer-Setup.zip
           make_latest: false   # versioned releases stay pinned as "latest"
 
-      # ── 11. Create a proper versioned release on version tags (v1.x.x) ───────
+      # ── 10. Create a proper versioned release on version tags (v1.x.x) ───────
       - name: Publish versioned release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
