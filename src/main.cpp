@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cstdio>
+#include <cwctype>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -96,6 +97,7 @@ static const wchar_t* REG_CMD = L"Directory\\shell\\FolderColorizer\\command";
 
 // ── Global state ──────────────────────────────────────────────────────────────
 static std::wstring g_folderPath;
+static std::wstring g_currentIconName;
 static HBRUSH  g_hbrDark      = nullptr;
 static HBRUSH  g_hbrDarker    = nullptr;
 static HBRUSH  g_hbrCard      = nullptr;
@@ -158,22 +160,6 @@ static bool IsAdmin()
         FreeSid(adminGroup);
     }
     return result == TRUE;
-}
-
-static void RunAttrib(const std::wstring& flags, const std::wstring& path)
-{
-    std::wstring cmd = L"attrib " + flags + L" \"" + path + L"\"";
-    STARTUPINFOW si = {}; si.cb = sizeof(si);
-    PROCESS_INFORMATION pi = {};
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    std::vector<wchar_t> buf(cmd.begin(), cmd.end());
-    buf.push_back(L'\0');
-    CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
-                   CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-    WaitForSingleObject(pi.hProcess, 5000);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
 }
 
 static void RefreshExplorer(const std::wstring& path)
@@ -271,6 +257,55 @@ static bool CopySelfToInstallDir()
     return true;
 }
 
+static std::wstring DetectCurrentIconName(const std::wstring& folder)
+{
+    std::wstring iniPath = folder + L"\\desktop.ini";
+    if (!PathFileExistsW(iniPath.c_str())) return L"";
+
+    wchar_t buf[MAX_PATH] = {};
+    GetPrivateProfileStringW(L".ShellClassInfo", L"IconResource", L"", buf, MAX_PATH, iniPath.c_str());
+
+    std::wstring iconResource = buf;
+    if (iconResource.empty()) return L"";
+
+    size_t lastBackslash = iconResource.find_last_of(L"\\/");
+    if (lastBackslash == std::wstring::npos) return L"";
+
+    std::wstring filename = iconResource.substr(lastBackslash + 1);
+    size_t comma = filename.find(L",");
+    if (comma != std::wstring::npos) {
+        filename = filename.substr(0, comma);
+    }
+    size_t ext = filename.find(L".ico");
+    if (ext != std::wstring::npos) {
+        filename = filename.substr(0, ext);
+    }
+    return filename;
+}
+
+static bool IsAppInstalled()
+{
+    std::wstring exe = GetExePath();
+    wchar_t pf[MAX_PATH] = {};
+    SHGetFolderPathW(nullptr, CSIDL_PROGRAM_FILES, nullptr, 0, pf);
+    std::wstring spf = pf;
+
+    wchar_t pfx86[MAX_PATH] = {};
+    SHGetFolderPathW(nullptr, CSIDL_PROGRAM_FILESX86, nullptr, 0, pfx86);
+    std::wstring spf86 = pfx86;
+
+    auto to_lower = [](std::wstring s) {
+        std::transform(s.begin(), s.end(), s.begin(), ::towlower);
+        return s;
+    };
+    std::wstring lexe = to_lower(exe);
+    std::wstring lpf = to_lower(spf);
+    std::wstring lpf86 = to_lower(spf86);
+
+    return (!lpf.empty() && lexe.rfind(lpf, 0) == 0) ||
+           (!lpf86.empty() && lexe.rfind(lpf86, 0) == 0);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Apply / Reset folder icon
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -291,31 +326,48 @@ static bool ApplyIcon(const std::wstring& folder, const std::wstring& iconName)
     CreateDirectoryW(iconDir.c_str(), nullptr);
     CopyFileW(iconSrc.c_str(), iconDest.c_str(), FALSE);
 
-    // Hide the cache dir
-    RunAttrib(L"+H +S", iconDir);
+    // Hide the cache dir synchronously via Win32 API
+    SetFileAttributesW(iconDir.c_str(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
 
     // Write desktop.ini
     std::wstring iniPath = folder + L"\\desktop.ini";
-    // Remove existing attributes
-    RunAttrib(L"-R -S -H", iniPath);
-    {
-        std::wofstream f(iniPath);
-        if (!f.is_open())
-        {
-            MsgError(L"Permission Error",
-                     L"Could not write desktop.ini.\nTry running as Administrator.");
-            return false;
-        }
-        f << L"[.ShellClassInfo]\r\n";
-        f << L"IconResource=" << iconDest << L",0\r\n";
-        f << L"IconIndex=0\r\n";
-        f << L"[ViewState]\r\n";
-        f << L"Mode=\r\nVid=\r\nFolderType=Generic\r\n";
-    }
-    RunAttrib(L"+R +S +H", iniPath);
+    // Remove existing attributes synchronously to allow writing
+    SetFileAttributesW(iniPath.c_str(), FILE_ATTRIBUTE_NORMAL);
 
-    // Make folder itself system (required for desktop.ini to take effect)
-    RunAttrib(L"+R +S", folder);
+    std::wstring iniContent =
+        L"[.ShellClassInfo]\r\n"
+        L"IconResource=.folder_icons\\" + iconName + L".ico,0\r\n"
+        L"IconIndex=0\r\n"
+        L"[ViewState]\r\n"
+        L"Mode=\r\nVid=\r\nFolderType=Generic\r\n";
+
+    // Write binary UTF-16 LE with BOM (extremely safe for Explorer)
+    std::ofstream f(iniPath, std::ios::binary);
+    if (!f.is_open())
+    {
+        DWORD err = GetLastError();
+        std::wstring msg = L"Could not write desktop.ini. (Error code: " + std::to_wstring(err) + L")\n";
+        if (err == ERROR_ACCESS_DENIED) {
+            msg += L"This folder is protected by Windows. Try running the app as Administrator or picking a folder in your user directories (e.g. Documents, Desktop).";
+        } else {
+            msg += L"Please try running as Administrator.";
+        }
+        MsgError(L"Permission Error", msg.c_str());
+        return false;
+    }
+    // Write UTF-16 LE BOM (0xFF, 0xFE)
+    unsigned char bom[2] = { 0xFF, 0xFE };
+    f.write(reinterpret_cast<const char*>(bom), 2);
+    // Write characters
+    f.write(reinterpret_cast<const char*>(iniContent.data()), iniContent.size() * sizeof(wchar_t));
+    f.close();
+
+    // Set desktop.ini to hidden, system, read-only
+    SetFileAttributesW(iniPath.c_str(), FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN);
+
+    // Make folder itself system/read-only (required for desktop.ini to take effect)
+    DWORD folderAttr = GetFileAttributesW(folder.c_str());
+    SetFileAttributesW(folder.c_str(), folderAttr | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_READONLY);
 
     RefreshExplorer(folder);
     return true;
@@ -326,10 +378,10 @@ static void ResetIcon(const std::wstring& folder)
     std::wstring iniPath  = folder + L"\\desktop.ini";
     std::wstring iconDir  = folder + L"\\.folder_icons";
 
-    RunAttrib(L"-R -S -H", iniPath);
+    SetFileAttributesW(iniPath.c_str(), FILE_ATTRIBUTE_NORMAL);
     DeleteFileW(iniPath.c_str());
 
-    RunAttrib(L"-H -S", iconDir);
+    SetFileAttributesW(iconDir.c_str(), FILE_ATTRIBUTE_NORMAL);
     // Remove directory recursively (simple shell delete)
     {
         SHFILEOPSTRUCTW op = {};
@@ -341,7 +393,12 @@ static void ResetIcon(const std::wstring& folder)
         SHFileOperationW(&op);
     }
 
-    RunAttrib(L"-R -S", folder);
+    // Remove System attribute from the folder
+    DWORD folderAttr = GetFileAttributesW(folder.c_str());
+    if (folderAttr != INVALID_FILE_ATTRIBUTES)
+    {
+        SetFileAttributesW(folder.c_str(), folderAttr & ~(FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_READONLY));
+    }
     RefreshExplorer(folder);
 }
 
@@ -367,44 +424,18 @@ enum {
 static LRESULT CALLBACK SwatchProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                                     UINT_PTR, DWORD_PTR dwRef)
 {
-    static bool s_trackingMouse = false;
-
     switch (msg)
     {
-    case WM_PAINT:
-    {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
-        RECT rc; GetClientRect(hwnd, &rc);
-
-        COLORREF fill = (COLORREF)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-        HBRUSH hbr = CreateSolidBrush(fill);
-        FillRect(hdc, &rc, hbr);
-        DeleteObject(hbr);
-
-        // border — white on hover, dim otherwise
-        bool hover = (GetWindowLongPtrW(hwnd, GWLP_ID) == (LONG_PTR)GetPropW(hwnd, L"hover"));
-        COLORREF borderCol = hover ? SWATCH_HOVER : SWATCH_BORDER;
-        HPEN hpen = CreatePen(PS_SOLID, 2, borderCol);
-        HPEN old  = (HPEN)SelectObject(hdc, hpen);
-        HBRUSH hbrNull = (HBRUSH)GetStockObject(NULL_BRUSH);
-        HBRUSH oldBr   = (HBRUSH)SelectObject(hdc, hbrNull);
-        Rectangle(hdc, rc.left+1, rc.top+1, rc.right-1, rc.bottom-1);
-        SelectObject(hdc, old);
-        SelectObject(hdc, oldBr);
-        DeleteObject(hpen);
-
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
     case WM_MOUSEMOVE:
     {
-        // Track hover
-        SetPropW(hwnd, L"hover", (HANDLE)(LONG_PTR)GetWindowLongPtrW(hwnd, GWLP_ID));
-        TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
-        TrackMouseEvent(&tme);
-        SetCursor(LoadCursorW(nullptr, IDC_HAND));
-        InvalidateRect(hwnd, nullptr, FALSE);
+        // Track hover state using properties
+        if (GetPropW(hwnd, L"hover") == nullptr)
+        {
+            SetPropW(hwnd, L"hover", (HANDLE)1);
+            TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+            TrackMouseEvent(&tme);
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
         return 0;
     }
     case WM_MOUSELEAVE:
@@ -434,6 +465,9 @@ static HWND BuildSwatchPane(HWND parent, const Entry* entries, int count,
         WS_CHILD | WS_CLIPCHILDREN,
         0, 0, parentW, paneH,
         parent, nullptr, nullptr, nullptr);
+
+    // Style the pane's static container to be dark
+    SetWindowSubclass(pane, DarkStaticProc, 0, 0);
 
     // Label
     HWND lbl = CreateWindowExW(0, L"STATIC",
@@ -635,9 +669,13 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillRect(dis->hDC, &rc, hbr);
             DeleteObject(hbr);
 
-            bool hover = (dis->itemState & ODS_HOTLIGHT) != 0;
-            COLORREF bc = hover ? SWATCH_HOVER : SWATCH_BORDER;
-            HPEN pen = CreatePen(PS_SOLID, 2, bc);
+            bool hover = (GetPropW(dis->hwndItem, L"hover") != nullptr);
+            bool isCurrent = (g_currentIconName == e.iconName);
+
+            // Highlight border: double thickness if selected or hover
+            COLORREF bc = hover ? SWATCH_HOVER : (isCurrent ? SWATCH_HOVER : SWATCH_BORDER);
+            int thickness = (isCurrent || hover) ? 3 : 2;
+            HPEN pen = CreatePen(PS_SOLID, thickness, bc);
             HPEN oldPen = (HPEN)SelectObject(dis->hDC, pen);
             HBRUSH nb   = (HBRUSH)GetStockObject(NULL_BRUSH);
             HBRUSH ob   = (HBRUSH)SelectObject(dis->hDC, nb);
@@ -645,6 +683,23 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             SelectObject(dis->hDC, oldPen);
             SelectObject(dis->hDC, ob);
             DeleteObject(pen);
+
+            // Draw a checkmark if selected
+            if (isCurrent)
+            {
+                COLORREF checkColor = (e.preview == RGB(0xF0,0xF0,0xF0) || e.preview == RGB(0xFF,0xFF,0xFF)) ? RGB(0x00,0x00,0x00) : RGB(0xFF,0xFF,0xFF);
+                HPEN checkPen = CreatePen(PS_SOLID, 2, checkColor);
+                HPEN oldCheckPen = (HPEN)SelectObject(dis->hDC, checkPen);
+                
+                int cx = (rc.left + rc.right) / 2;
+                int cy = (rc.top + rc.bottom) / 2;
+                MoveToEx(dis->hDC, cx - 6, cy, nullptr);
+                LineTo(dis->hDC, cx - 2, cy + 4);
+                LineTo(dis->hDC, cx + 6, cy - 4);
+                
+                SelectObject(dis->hDC, oldCheckPen);
+                DeleteObject(checkPen);
+            }
             return TRUE;
         }
 
@@ -700,10 +755,14 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 if (g_folderPath.empty())
                     MsgInfo(L"No Folder", L"Right-click a folder first.");
                 else {
-                    ResetIcon(g_folderPath);
-                    MsgInfo(L"Done ✓",
-                            L"Folder icon reset to default.\nPress F5 in Explorer if needed.");
-                    DestroyWindow(hwnd);
+                    if (MessageBoxW(hwnd, L"Are you sure you want to reset this folder to its default icon?",
+                                    L"Confirm Reset", MB_YESNO | MB_ICONQUESTION) == IDYES)
+                    {
+                        ResetIcon(g_folderPath);
+                        MsgInfo(L"Done ✓",
+                                L"Folder icon reset to default.\nPress F5 in Explorer if needed.");
+                        DestroyWindow(hwnd);
+                    }
                 }
                 break;
 
@@ -827,7 +886,7 @@ static HWND CreateMainWindow()
     HWND hwnd = CreateWindowExW(
         WS_EX_APPWINDOW,
         L"FolderColorizerWnd",
-        L"Folder Colorizer",
+        L"Folder Colorizer v1.0.0",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         wx, wy, tabW, totalH,
         nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -845,8 +904,8 @@ static HWND CreateMainWindow()
         hwnd, (HMENU)ID_TAB, nullptr, nullptr);
     SendMessageW(g_hwndTab, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
 
-    // Style tab: dark background
-    SetWindowTheme(g_hwndTab, L"", L"");
+    // Style tab: modern dark explorer styling
+    SetWindowTheme(g_hwndTab, L"DarkMode_Explorer", L"");
 
     TCITEMW tie = {};
     tie.mask    = TCIF_TEXT;
@@ -862,18 +921,18 @@ static HWND CreateMainWindow()
     int paneX = 8 + tabContentRc.left;
     int paneY = tabTop + tabContentRc.top;
 
-    // ── Swatch panes ──────────────────────────────────────────────────────
-    g_hwndColorPane = BuildSwatchPane(g_hwndTab, COLORS,   COLOR_COUNT,
+    // ── Swatch panes (parented to main window instead of tab control) ─────
+    g_hwndColorPane = BuildSwatchPane(hwnd, COLORS,   COLOR_COUNT,
                                        ID_SWATCH_COLOR_BASE,   paneW);
-    g_hwndTexPane   = BuildSwatchPane(g_hwndTab, TEXTURES, TEXTURE_COUNT,
+    g_hwndTexPane   = BuildSwatchPane(hwnd, TEXTURES, TEXTURE_COUNT,
                                        ID_SWATCH_TEXTURE_BASE, paneW);
 
-    // Position inside tab
+    // Position inside main window matching the tab content area
     SetWindowPos(g_hwndColorPane, nullptr,
-                 tabContentRc.left, tabContentRc.top, paneW, contentH,
+                 paneX, paneY, paneW, contentH,
                  SWP_NOZORDER);
     SetWindowPos(g_hwndTexPane, nullptr,
-                 tabContentRc.left, tabContentRc.top, paneW, contentH,
+                 paneX, paneY, paneW, contentH,
                  SWP_NOZORDER);
 
     ShowWindow(g_hwndColorPane, SW_SHOW);
@@ -888,9 +947,9 @@ static HWND CreateMainWindow()
                      10, btnY, 160, btnH,
                      { RGB(0x55,0x55,0x55), FG_WHITE });
 
-    if (g_folderPath.empty())
+    if (g_folderPath.empty() && !IsAppInstalled())
     {
-        // Standalone launch: show install / uninstall
+        // Standalone launch and not installed: show install / uninstall
         CreateFlatButton(hwnd, L"✕  Uninstall", ID_BTN_UNINSTALL,
                          CW - 10 - 110, btnY, 110, btnH,
                          { ACCENT_RED, FG_WHITE });
@@ -900,10 +959,11 @@ static HWND CreateMainWindow()
     }
 
     // ── Status label ──────────────────────────────────────────────────────
+    int statusX = (g_folderPath.empty() && !IsAppInstalled()) ? CW/2 : 180;
     g_hwndStatus = CreateWindowExW(0, L"STATIC", L"",
         WS_CHILD | WS_VISIBLE | SS_RIGHT,
-        g_folderPath.empty() ? CW/2 : 180,
-        footerY + 4, CW - (g_folderPath.empty() ? CW/2 : 180) - 8, 16,
+        statusX,
+        footerY + 4, CW - statusX - 8, 16,
         hwnd, (HMENU)ID_STATUS_LABEL, nullptr, nullptr);
     SendMessageW(g_hwndStatus, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE);
     UpdateStatusLabel();
@@ -937,6 +997,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR lpCmdLine, int)
             LocalFree(argv);
             return 1;
         }
+        // Detect current icon color/texture to highlight in UI
+        g_currentIconName = DetectCurrentIconName(g_folderPath);
     }
     LocalFree(argv);
 
