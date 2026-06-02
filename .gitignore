@@ -1,0 +1,17 @@
+## .NET / C#
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+*.rsuser
+
+## OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Rider / VS Code
+.idea/
+.vscode/

@@ -1,138 +1,124 @@
-# 🎨 Folder Colorizer
+# 🎨 Folder Painter
 
-Change any Windows folder's color or texture with a right-click — no bloatware, no subscriptions, no Python required.
+> Right-click any Windows folder to paint it with a custom color or texture.
 
-Built entirely in native **C++ / Win32** — a single lightweight EXE with no runtime dependencies.
-
----
-
-## Requirements
-
-- **Windows 10 or 11** (64-bit)
-- No Python, no .NET, no runtimes needed
+![Windows 10+](https://img.shields.io/badge/Windows-10%2B-0078D6?logo=windows)
+![.NET 6](https://img.shields.io/badge/.NET-6.0-512BD4?logo=dotnet)
+![Single EXE](https://img.shields.io/badge/distribution-single%20EXE-brightgreen)
 
 ---
 
-## Quick Start
+## ✨ Features
 
-### Option A — Use the installer (recommended)
-
-Download `FolderColorizer-Setup.exe` from the [Releases](../../releases) page and run it. The installer registers the context menu automatically.
-
-### Option B — Manual setup
-
-1. Right-click **`INSTALL.bat`** → **Run as administrator**
-2. The app window will open. Click **"⚙ Install Right-Click Menu"**.
-3. Done — the context menu is now registered system-wide.
-
-### Step 2 — Use it
-
-Right-click **any folder** in Windows Explorer and choose:
-
-> **Change Folder Color / Texture**
-
-Pick a color or texture from the grid, and the folder icon updates instantly.
+| Feature | Details |
+|---|---|
+| **14 preset colors** | Red, Orange, Yellow, Lime, Green, Teal, Sky Blue, Blue, Indigo, Purple, Pink, Dark, White, Default |
+| **Custom color picker** | Full Windows color dialog |
+| **6 texture overlays** | None, Dots, Grid, Diagonal, Crosshatch, Brick |
+| **Live preview** | See the folder icon before applying |
+| **Non-destructive** | Custom icon stored in hidden `.FolderPainter` subfolder |
+| **One-click reset** | Restore the default folder icon at any time |
+| **Single EXE** | No installation, no .NET runtime required on target machine |
+| **Windows 10 / 11** | Full DPI-aware, Per-Monitor v2 |
 
 ---
 
-## Available Colors
+## 🚀 Getting Started
 
-| Color | Color | Color | Color |
-|-------|-------|-------|-------|
-| 🟡 Yellow | 🔵 Blue | 🟢 Green | 🔴 Red |
-| 🟣 Purple | 🟠 Orange | 🩷 Pink | 🩵 Teal |
-| ⬜ White | ⬛ Black | 🩶 Gray | 🟫 Brown |
+### Option A — Download the pre-built EXE
 
-## Available Textures
+1. Go to the [**Releases**](../../releases) page.
+2. Download `FolderPainter.exe` from the latest release.
 
-| Texture | Texture | Texture |
-|---------|---------|---------|
-| Gradient | Striped | Dots |
-| Carbon Fiber | Wood Grain | Metallic |
-| Neon Blue | Neon Green | Neon Pink |
+### Option B — Build from source
 
----
-
-## How It Works
-
-1. Copies a custom `.ico` file into a hidden `.folder_icons` subfolder inside your chosen folder.
-2. Writes a `desktop.ini` file (hidden system file) that tells Windows Explorer to use the custom icon.
-3. Sends a shell notification (`SHChangeNotify`) so Explorer refreshes immediately.
-
-> **Tip:** If the icon doesn't update immediately, press **F5** in Explorer.
+```bash
+git clone https://github.com/YOUR_USERNAME/FolderPainter
+cd FolderPainter
+dotnet publish src/FolderPainter.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/
+```
 
 ---
 
-## Reset to Default
+## 🔧 Setup (one time)
 
-Right-click the folder → **Change Folder Color / Texture** → click **"↩ Reset to Default"**.
+1. **Run `FolderPainter.exe`** — the Setup window opens.
+2. Click **Register** (run as Administrator if Windows asks).
+3. Done — the right-click menu entry is now active.
 
-This removes the `desktop.ini` and the `.folder_icons` folder, restoring the normal yellow folder icon.
-
----
-
-## Uninstall the Right-Click Menu
-
-Run **`UNINSTALL.bat`** as Administrator. This removes the registry entry and optionally removes the installed app files.
+To remove it: run `FolderPainter.exe` again → click **Unregister**.
 
 ---
 
-## File Structure
+## 🖱 Usage
+
+1. Right-click any folder in Windows Explorer.
+2. Choose **🎨 Paint Folder**.
+3. Pick a color (or click **+ Custom**) and optionally a texture.
+4. Click **Apply** — the folder icon updates immediately.
+
+To reset a folder: open the painter → click **Reset**.
+
+---
+
+## 📁 Project Structure
 
 ```
-folder_colorizer/
+FolderPainter/
 ├── src/
-│   ├── main.cpp           ← Full C++/Win32 application source
-│   └── app.rc             ← Windows resource file (icon + version info)
-├── CMakeLists.txt         ← CMake build script
-├── INSTALL.bat            ← One-click installer
-├── UNINSTALL.bat          ← Removes context menu
-├── installer.iss          ← Inno Setup installer script
-├── README.md
-└── icons/                 ← Pre-built .ico files (33 icons)
-    ├── yellow.ico
-    ├── blue.ico
-    ├── ...
-    ├── gradient.ico
-    └── neon_pink.ico
+│   ├── FolderPainter.csproj   # Project file
+│   ├── Program.cs             # Entry point
+│   ├── MainForm.cs            # Color / texture picker UI + icon engine
+│   ├── Controls.cs            # Custom UI controls (swatches, buttons)
+│   ├── SetupForm.cs           # Register / unregister context menu
+│   └── app.manifest           # DPI awareness + Windows 10/11 compatibility
+├── .github/
+│   └── workflows/
+│       └── build.yml          # GitHub Actions – auto-build & release EXE
+└── README.md
 ```
 
 ---
 
-## Building from Source
+## ⚙️ How it works
 
-### Requirements
+When you click **Apply**, Folder Painter:
 
-- CMake 3.20+
-- Visual Studio 2019/2022 (with "Desktop development with C++" workload)
+1. Renders your chosen color + texture into a 6-resolution `.ico` file
+   (16 × 16 → 256 × 256, stored as PNG inside ICO for Windows 10+ clarity).
+2. Writes a `desktop.ini` in the target folder pointing to the icon.
+3. Marks the folder with the `System` attribute so Windows loads the ini.
+4. Calls `SHChangeNotify` to tell Explorer to refresh immediately.
 
-### Steps
+Everything is stored in a hidden `.FolderPainter` subfolder — no system files
+are modified. Clicking **Reset** deletes that subfolder and the `desktop.ini`.
 
-```powershell
-cmake -B build -A x64
-cmake --build build --config Release
-# Output: build\Release\folder_colorizer.exe
-```
+---
 
-To build the installer (requires [Inno Setup 6](https://jrsoftware.org/isinfo.php)):
+## 🤖 GitHub Actions
 
-```powershell
-iscc installer.iss
-# Output: output\FolderColorizer-Setup-v1.0.0.exe
+Every push to `main`/`master`:
+- Builds a **Release** self-contained single-file EXE for `win-x64`.
+- Uploads it as a downloadable **Build Artifact**.
+
+Push a tag like `v1.0.0`:
+- Everything above, **plus** a new **GitHub Release** is created automatically
+  with the EXE attached.
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ---
 
-## Troubleshooting
+## 📋 Requirements
 
-| Problem | Fix |
-|---------|-----|
-| Context menu doesn't appear | Make sure you ran INSTALL.bat as **Administrator** |
-| Icon doesn't change | Press **F5** in Explorer, or log out and back in |
-| "Permission Error" on desktop.ini | Run the app as **Administrator** for system/protected folders |
+- Windows 10 or Windows 11 (x64)
+- No .NET runtime needed — the EXE is fully self-contained
 
 ---
 
-## Privacy
+## 📄 License
 
-This app is 100% local. No internet connection, no telemetry, no cloud.
+MIT — feel free to use, modify, and distribute.
