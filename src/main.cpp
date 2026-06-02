@@ -8,8 +8,7 @@
  * Usage:  folder_colorizer.exe [folder_path]
  */
 
-#define UNICODE
-#define _UNICODE
+// UNICODE and _UNICODE are defined by CMakeLists.txt on the command line.
 #define _WIN32_WINNT 0x0A00   // Windows 10
 
 #include <windows.h>
@@ -800,12 +799,12 @@ static HWND CreateMainWindow()
 {
     // Width = COLS*swatch + padding on both sides + gaps
     int tabW = SWATCH_COLS * (SWATCH_SIZE + SWATCH_PAD) + TAB_CONTENT_PAD * 2 + SWATCH_PAD;
-    tabW = max(tabW, 420);
+    tabW = std::max(tabW, 420);
 
     // Height: header + tab bar(30) + content rows(colors=2 rows, 2*(52+18+12)+30) + footer
     int colorRows  = (COLOR_COUNT   + SWATCH_COLS - 1) / SWATCH_COLS;
     int texRows    = (TEXTURE_COUNT + SWATCH_COLS - 1) / SWATCH_COLS;
-    int contentH   = max(colorRows, texRows) * (SWATCH_SIZE + 18 + SWATCH_PAD*2)
+    int contentH   = std::max(colorRows, texRows) * (SWATCH_SIZE + 18 + SWATCH_PAD*2)
                      + 40 + TAB_CONTENT_PAD*2;
     int totalH     = HEADER_H + 30 + contentH + FOOTER_H + 16;
 
