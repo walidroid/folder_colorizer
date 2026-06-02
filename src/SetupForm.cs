@@ -4,7 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
-
+using System.Diagnostics;
 namespace FolderPainter
 {
     /// <summary>
@@ -187,7 +187,4 @@ namespace FolderPainter
             Registry.ClassesRoot.DeleteSubKeyTree(@"Directory\shell\FolderPainter", throwOnMissingSubKey: false);
         }
     }
-
-    // tiny shim so SetupForm.cs compiles without System.Diagnostics explicitly
-    using Process = System.Diagnostics.Process;
 }
