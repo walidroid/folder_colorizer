@@ -22,14 +22,25 @@ namespace FolderPainter
         public MainForm(string folderPath)
         {
             _folderPath = folderPath;
+
+            // Load current color/texture settings from state file if it exists
+            var (colorName, fill, shadow, texture) = FolderIconEngine.GetCurrentState(_folderPath);
+            if (fill != null && shadow != null)
+            {
+                _selectedFill = fill.Value;
+                _selectedShadow = shadow.Value;
+                _selectedTexture = texture ?? "None";
+            }
+
             BuildUI();
+            UpdateSelectedSwatches();
             UpdatePreview();
         }
 
         // ── UI Builder ───────────────────────────────────────────────────────
         private void BuildUI()
         {
-            Text            = "Folder Painter  –  " + Path.GetFileName(_folderPath);
+            Text            = "Folder Painter v1.0.0  –  " + Path.GetFileName(_folderPath);
             Size            = new Size(540, 520);
             MinimumSize     = new Size(540, 520);
             MaximumSize     = new Size(540, 520);
@@ -173,6 +184,7 @@ namespace FolderPainter
         {
             _selectedFill   = swatch.FillColor;
             _selectedShadow = swatch.ShadowColor;
+            UpdateSelectedSwatches();
             UpdatePreview();
         }
 
@@ -183,6 +195,7 @@ namespace FolderPainter
             {
                 _selectedFill   = dlg.Color;
                 _selectedShadow = ControlPaint.Dark(dlg.Color, 0.3f);
+                UpdateSelectedSwatches();
                 UpdatePreview();
             }
         }
@@ -191,7 +204,16 @@ namespace FolderPainter
         {
             try
             {
-                FolderIconEngine.Apply(_folderPath, _selectedFill, _selectedShadow, _selectedTexture);
+                string presetName = "Custom";
+                foreach (var p in FolderIconEngine.Presets)
+                {
+                    if (p.Fill.ToArgb() == _selectedFill.ToArgb() && p.Shadow.ToArgb() == _selectedShadow.ToArgb())
+                    {
+                        presetName = p.Name;
+                        break;
+                    }
+                }
+                FolderIconEngine.Apply(_folderPath, _selectedFill, _selectedShadow, _selectedTexture, presetName);
                 MessageBox.Show(
                     "Folder icon updated!\n\nPress F5 or reopen Explorer to see the change.",
                     "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -201,6 +223,18 @@ namespace FolderPainter
             {
                 MessageBox.Show("Error applying icon:\n" + ex.Message,
                     "Folder Painter", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void UpdateSelectedSwatches()
+        {
+            foreach (Control c in Controls)
+            {
+                if (c is ColorSwatch cs)
+                {
+                    cs.IsSelected = (cs.FillColor.ToArgb() == _selectedFill.ToArgb() &&
+                                     cs.ShadowColor.ToArgb() == _selectedShadow.ToArgb());
+                }
             }
         }
 

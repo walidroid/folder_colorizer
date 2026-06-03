@@ -20,10 +20,30 @@ namespace FolderPainter
             RefreshStatus();
         }
 
+        private static bool IsAppInstalled()
+        {
+            try
+            {
+                string exePath = Process.GetCurrentProcess().MainModule?.FileName;
+                if (string.IsNullOrEmpty(exePath)) return false;
+
+                string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                string pfX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+                return (!string.IsNullOrEmpty(pf) && exePath.StartsWith(pf, StringComparison.OrdinalIgnoreCase)) ||
+                       (!string.IsNullOrEmpty(pfX86) && exePath.StartsWith(pfX86, StringComparison.OrdinalIgnoreCase));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private void BuildUI()
         {
-            Text            = "Folder Painter – Setup";
-            Size            = new Size(440, 310);
+            Text            = "Folder Painter v1.0.0 – Setup";
+            bool installed  = IsAppInstalled();
+            Size            = installed ? new Size(440, 195) : new Size(440, 310);
             MinimumSize     = Size;
             MaximumSize     = Size;
             StartPosition   = FormStartPosition.CenterScreen;
@@ -67,38 +87,59 @@ namespace FolderPainter
             };
             Controls.Add(_statusLabel);
 
-            // Register button
-            var regBtn = new FlatButton("Register  (Add color submenu to right-click)")
+            if (installed)
             {
-                Location    = new Point(20, 160),
-                Size        = new Size(390, 34),
-                AccentColor = Color.FromArgb(0, 130, 100)
-            };
-            regBtn.Click += OnRegisterClick;
-            Controls.Add(regBtn);
+                _statusLabel.ForeColor = Color.FromArgb(140, 180, 250);
+                _statusLabel.Text = "ℹ  This application is installed in Program Files.\n" +
+                                    "Registry integration is managed by the system installer.";
 
-            // Unregister button
-            var unregBtn = new FlatButton("Unregister  (Remove from right-click menu)")
+                Controls.Add(new Label
+                {
+                    Text      = "To register or unregister the menu, please use the Windows Settings App or run the application from a portable directory.",
+                    Font      = new Font("Segoe UI", 8.5f),
+                    ForeColor = Color.FromArgb(150, 150, 150),
+                    AutoSize  = false,
+                    Size      = new Size(390, 40),
+                    Location  = new Point(20, 130)
+                });
+            }
+            else
             {
-                Location    = new Point(20, 204),
-                Size        = new Size(390, 34),
-                AccentColor = Color.FromArgb(120, 40, 40)
-            };
-            unregBtn.Click += OnUnregisterClick;
-            Controls.Add(unregBtn);
+                // Register button
+                var regBtn = new FlatButton("Register  (Add color submenu to right-click)")
+                {
+                    Location    = new Point(20, 160),
+                    Size        = new Size(390, 34),
+                    AccentColor = Color.FromArgb(0, 130, 100)
+                };
+                regBtn.Click += OnRegisterClick;
+                Controls.Add(regBtn);
 
-            Controls.Add(new Label
-            {
-                Text      = "⚠  Run as Administrator if registration fails.",
-                Font      = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(180, 150, 60),
-                AutoSize  = true,
-                Location  = new Point(20, 254)
-            });
+                // Unregister button
+                var unregBtn = new FlatButton("Unregister  (Remove from right-click menu)")
+                {
+                    Location    = new Point(20, 204),
+                    Size        = new Size(390, 34),
+                    AccentColor = Color.FromArgb(120, 40, 40)
+                };
+                unregBtn.Click += OnUnregisterClick;
+                Controls.Add(unregBtn);
+
+                Controls.Add(new Label
+                {
+                    Text      = "⚠  Run as Administrator if registration fails.",
+                    Font      = new Font("Segoe UI", 8f),
+                    ForeColor = Color.FromArgb(180, 150, 60),
+                    AutoSize  = true,
+                    Location  = new Point(20, 254)
+                });
+            }
         }
 
         private void RefreshStatus()
         {
+            if (IsAppInstalled()) return;
+
             try
             {
                 using var key = Registry.ClassesRoot.OpenSubKey(@"Directory\shell\FolderPainterMenu");

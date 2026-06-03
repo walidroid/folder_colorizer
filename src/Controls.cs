@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace FolderPainter
@@ -10,6 +11,13 @@ namespace FolderPainter
         public Color FillColor   { get; }
         public Color ShadowColor { get; }
         private readonly string _name;
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set { _isSelected = value; Invalidate(); }
+        }
 
         public ColorSwatch(string name, Color fill, Color shadow)
         {
@@ -26,7 +34,7 @@ namespace FolderPainter
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
 
             using var brush = new SolidBrush(FillColor);
             using var pen   = new Pen(Color.FromArgb(80, Color.Black), 1.5f);
@@ -34,12 +42,24 @@ namespace FolderPainter
             g.DrawEllipse(pen, 2, 2, 22, 22);
 
             // Sheen
-            using var sheen = new System.Drawing.Drawing2D.LinearGradientBrush(
+            using var sheen = new LinearGradientBrush(
                 new PointF(2,2), new PointF(2,14),
                 Color.FromArgb(60, Color.White), Color.Transparent);
-            var path = new System.Drawing.Drawing2D.GraphicsPath();
+            var path = new GraphicsPath();
             path.AddEllipse(2, 2, 22, 10);
             g.FillPath(sheen, path);
+
+            // If selected, draw a checkmark in the center
+            if (IsSelected)
+            {
+                // Contrast check to decide checkmark color (white vs dark-gray)
+                float brightness = (FillColor.R * 0.299f + FillColor.G * 0.587f + FillColor.B * 0.114f) / 255f;
+                Color checkColor = brightness > 0.6f ? Color.FromArgb(40, 40, 40) : Color.White;
+
+                using var checkPen = new Pen(checkColor, 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+                g.DrawLine(checkPen, 9, 13, 12, 16);
+                g.DrawLine(checkPen, 12, 16, 17, 10);
+            }
         }
 
         protected override void OnMouseEnter(EventArgs e)

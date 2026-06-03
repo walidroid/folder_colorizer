@@ -54,14 +54,14 @@ namespace FolderPainter
             foreach (var p in Presets)
                 if (string.Equals(p.Name, colorName, StringComparison.OrdinalIgnoreCase))
                 {
-                    Apply(folderPath, p.Fill, p.Shadow, "None");
+                    Apply(folderPath, p.Fill, p.Shadow, "None", p.Name);
                     return;
                 }
             throw new ArgumentException($"Unknown color preset: '{colorName}'");
         }
 
         /// <summary>Apply a custom color and optional texture to a folder.</summary>
-        public static void Apply(string folderPath, Color fill, Color shadow, string texture)
+        public static void Apply(string folderPath, Color fill, Color shadow, string texture, string colorName = "Custom")
         {
             // 1. Create hidden icon folder
             string iconFolder = Path.Combine(folderPath, ".FolderPainter");
@@ -78,6 +78,12 @@ namespace FolderPainter
             using (var b32  = RenderFolderIcon(fill, shadow, texture,  32))
             using (var b16  = RenderFolderIcon(fill, shadow, texture,  16))
                 SaveMultiResIco(icoPath, new[] { b256, b128, b64, b48, b32, b16 });
+
+            // Write state metadata file
+            string statePath = Path.Combine(iconFolder, "state.txt");
+            string stateContent = $"Color: {colorName}\r\nTexture: {texture}\r\nFill: #{fill.ToArgb():X8}\r\nShadow: #{shadow.ToArgb():X8}\r\n";
+            File.WriteAllText(statePath, stateContent, Encoding.UTF8);
+            File.SetAttributes(statePath, FileAttributes.Hidden | FileAttributes.System);
 
             // 3. Write desktop.ini as UTF-16 LE with BOM — REQUIRED by Windows Explorer
             //    File.WriteAllText with Encoding.Unicode writes UTF-16 LE + BOM automatically.
@@ -123,6 +129,53 @@ namespace FolderPainter
             File.SetAttributes(folderPath, fa & ~(FileAttributes.ReadOnly | FileAttributes.System));
 
             RefreshFolder(folderPath);
+        }
+
+        /// <summary>Retrieve the current color and texture state of a folder.</summary>
+        public static (string ColorName, Color? Fill, Color? Shadow, string Texture) GetCurrentState(string folderPath)
+        {
+            string statePath = Path.Combine(folderPath, ".FolderPainter", "state.txt");
+            if (!File.Exists(statePath))
+            {
+                return (null, null, null, null);
+            }
+
+            try
+            {
+                string[] lines = File.ReadAllLines(statePath);
+                string colorName = null;
+                string texture = "None";
+                Color? fill = null;
+                Color? shadow = null;
+
+                foreach (string line in lines)
+                {
+                    int idx = line.IndexOf(':');
+                    if (idx < 0) continue;
+                    string key = line.Substring(0, idx).Trim().ToLowerInvariant();
+                    string val = line.Substring(idx + 1).Trim();
+
+                    if (key == "color") colorName = val;
+                    else if (key == "texture") texture = val;
+                    else if (key == "fill")
+                    {
+                        if (val.StartsWith("#")) val = val.Substring(1);
+                        if (int.TryParse(val, System.Globalization.NumberStyles.HexNumber, null, out int argb))
+                            fill = Color.FromArgb(argb);
+                    }
+                    else if (key == "shadow")
+                    {
+                        if (val.StartsWith("#")) val = val.Substring(1);
+                        if (int.TryParse(val, System.Globalization.NumberStyles.HexNumber, null, out int argb))
+                            shadow = Color.FromArgb(argb);
+                    }
+                }
+                return (colorName, fill, shadow, texture);
+            }
+            catch
+            {
+                return (null, null, null, null);
+            }
         }
 
         // ── Icon Rendering ────────────────────────────────────────────────────
