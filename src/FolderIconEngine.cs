@@ -63,13 +63,20 @@ namespace FolderPainter
         /// <summary>Apply a custom color and optional texture to a folder.</summary>
         public static void Apply(string folderPath, Color fill, Color shadow, string texture, string colorName = "Custom")
         {
-            // 1. Create hidden icon folder
+            // 1. Prepare the hidden .FolderPainter directory
             string iconFolder = Path.Combine(folderPath, ".FolderPainter");
             Directory.CreateDirectory(iconFolder);
-            new DirectoryInfo(iconFolder).Attributes =
-                new DirectoryInfo(iconFolder).Attributes | FileAttributes.Hidden | FileAttributes.System;
 
-            // 2. Render and save the ICO  — must exist BEFORE desktop.ini is written
+            // Strip attributes on existing files so we can overwrite them freely
+            // (files written previously have Hidden+System which blocks File.Create)
+            foreach (string existingFile in Directory.GetFiles(iconFolder))
+                File.SetAttributes(existingFile, FileAttributes.Normal);
+
+            // Mark the directory itself as Hidden+System
+            new DirectoryInfo(iconFolder).Attributes =
+                FileAttributes.Directory | FileAttributes.Hidden | FileAttributes.System;
+
+            // 2. Render and save the ICO — must exist BEFORE desktop.ini is written
             string icoPath = Path.Combine(iconFolder, "folder.ico");
             using (var b256 = RenderFolderIcon(fill, shadow, texture, 256))
             using (var b128 = RenderFolderIcon(fill, shadow, texture, 128))
@@ -79,27 +86,31 @@ namespace FolderPainter
             using (var b16  = RenderFolderIcon(fill, shadow, texture,  16))
                 SaveMultiResIco(icoPath, new[] { b256, b128, b64, b48, b32, b16 });
 
-            // Write state metadata file
-            string statePath = Path.Combine(iconFolder, "state.txt");
+            // 3. Write state metadata so the UI can highlight the current color on next open
+            string statePath    = Path.Combine(iconFolder, "state.txt");
             string stateContent = $"Color: {colorName}\r\nTexture: {texture}\r\nFill: #{fill.ToArgb():X8}\r\nShadow: #{shadow.ToArgb():X8}\r\n";
             File.WriteAllText(statePath, stateContent, Encoding.UTF8);
-            File.SetAttributes(statePath, FileAttributes.Hidden | FileAttributes.System);
 
-            // 3. Write desktop.ini as UTF-16 LE with BOM — REQUIRED by Windows Explorer
-            //    File.WriteAllText with Encoding.Unicode writes UTF-16 LE + BOM automatically.
+            // 4. Write desktop.ini as UTF-16 LE with BOM — REQUIRED by Windows Explorer
+            //    Clear any previous attributes first so the write succeeds.
             string iniPath    = Path.Combine(folderPath, "desktop.ini");
+            if (File.Exists(iniPath))
+                File.SetAttributes(iniPath, FileAttributes.Normal);
             string iniContent = "[.ShellClassInfo]\r\nIconResource=.FolderPainter\\folder.ico,0\r\n";
             File.WriteAllText(iniPath, iniContent, Encoding.Unicode);
-            File.SetAttributes(iniPath, FileAttributes.Hidden | FileAttributes.System);
 
-            // 4. Set folder attributes
+            // 5. Now lock down the files with Hidden+System
+            File.SetAttributes(statePath, FileAttributes.Hidden | FileAttributes.System);
+            File.SetAttributes(iniPath,   FileAttributes.Hidden | FileAttributes.System);
+
+            // 6. Set folder attributes
             //    ReadOnly = signals Explorer this folder has a custom desktop.ini appearance
             //    System   = further ensures Explorer processes the desktop.ini
             FileAttributes fa = File.GetAttributes(folderPath);
             File.SetAttributes(folderPath,
                 (fa | FileAttributes.ReadOnly | FileAttributes.System) & ~FileAttributes.Normal);
 
-            // 5. Notify Explorer to refresh icon immediately
+            // 7. Notify Explorer to refresh the icon immediately
             RefreshFolder(folderPath);
         }
 
