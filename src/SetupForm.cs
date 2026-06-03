@@ -217,40 +217,48 @@ namespace FolderPainter
             string exePath = Process.GetCurrentProcess().MainModule.FileName;
             string quoted  = $"\"{exePath}\"";
 
-            // ── Parent flyout key ──────────────────────────────────────────
+            // Generate colored-circle .ico files for each preset into %LocalAppData%\FolderPainter\icons\
+            FolderIconEngine.SavePresetIcons();
+            string iconDir = FolderIconEngine.GetIconCacheDir();
+
+            // ── Parent flyout key ───────────────────────────────────────────────
             // SubCommands = "" tells Windows to build the flyout from nested shell subkeys
             using var parent = Registry.ClassesRoot.CreateSubKey(@"Directory\shell\FolderPainterMenu");
-            parent.SetValue("MUIVerb", "🎨 Paint Folder");
+            parent.SetValue("MUIVerb", "Paint Folder");
             parent.SetValue("SubCommands", "");
-            parent.SetValue("Icon", $"{quoted},0");
+            parent.SetValue("Icon", $"{exePath},0");
 
             using var shell = parent.CreateSubKey("shell");
 
-            // ── 00: Restore default (remove icon) ─────────────────────────
-            CreateSubCommand(shell, "00_Reset", "↩ Restore Default",
+            // ── 00: Restore default (remove icon) ───────────────────────────────
+            CreateSubCommand(shell, "00_Reset", "Restore Default",
                 $"{quoted} \"%1\" --reset");
 
-            // ── Color presets ──────────────────────────────────────────────
+            // ── Color presets ───────────────────────────────────────────────────────
             int i = 1;
             foreach (var preset in FolderIconEngine.Presets)
             {
+                string presetIco = System.IO.Path.Combine(iconDir, preset.Name + ".ico");
                 CreateSubCommand(shell,
                     $"{i:D2}_{preset.Name}",
-                    $"{preset.Emoji} {preset.Display}",
-                    $"{quoted} \"%1\" --color {preset.Name}");
+                    preset.Display,
+                    $"{quoted} \"%1\" --color {preset.Name}",
+                    presetIco);
                 i++;
             }
 
-            // ── Last: open full UI ─────────────────────────────────────────
-            CreateSubCommand(shell, "99_More", "🖌 More Options...",
-                $"{quoted} \"%1\"");
+            // ── Last: open full UI ─────────────────────────────────────────────────
+            CreateSubCommand(shell, "99_More", "More Options...",
+                $"{quoted} \"%1\"", exePath);
         }
 
         private static void CreateSubCommand(RegistryKey shell, string keyName,
-                                             string label, string command)
+                                             string label, string command, string iconPath = null)
         {
             using var key = shell.CreateSubKey(keyName);
             key.SetValue("MUIVerb", label);
+            if (!string.IsNullOrEmpty(iconPath) && System.IO.File.Exists(iconPath))
+                key.SetValue("Icon", iconPath);
             using var cmd = key.CreateSubKey("command");
             cmd.SetValue("", command);
         }

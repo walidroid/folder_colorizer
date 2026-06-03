@@ -93,10 +93,16 @@ namespace FolderPainter
 
             // 4. Write desktop.ini as UTF-16 LE with BOM — REQUIRED by Windows Explorer
             //    Clear any previous attributes first so the write succeeds.
+            //    [ViewState] FolderType=Generic prevents Explorer from showing a content-
+            //    preview thumbnail (the "file stack" view) which would override the custom icon.
             string iniPath    = Path.Combine(folderPath, "desktop.ini");
             if (File.Exists(iniPath))
                 File.SetAttributes(iniPath, FileAttributes.Normal);
-            string iniContent = "[.ShellClassInfo]\r\nIconResource=.FolderPainter\\folder.ico,0\r\n";
+            string iniContent =
+                "[.ShellClassInfo]\r\n" +
+                "IconResource=.FolderPainter\\folder.ico,0\r\n" +
+                "[ViewState]\r\n" +
+                "FolderType=Generic\r\n";
             File.WriteAllText(iniPath, iniContent, Encoding.Unicode);
 
             // 5. Now lock down the files with Hidden+System
@@ -186,6 +192,60 @@ namespace FolderPainter
             catch
             {
                 return (null, null, null, null);
+            }
+        }
+
+        // ── Context-Menu Icon Helpers ─────────────────────────────────────────
+
+        /// <summary>Returns the directory used to cache preset color-circle icons.</summary>
+        public static string GetIconCacheDir()
+        {
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "FolderPainter", "icons");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        /// <summary>
+        /// Renders a small colored-circle bitmap suitable for context menu icons.
+        /// </summary>
+        public static Bitmap RenderColorCircle(Color fill, int size)
+        {
+            var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            using var g = Graphics.FromImage(bmp);
+            g.SmoothingMode     = SmoothingMode.AntiAlias;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.Clear(Color.Transparent);
+
+            int m = 1; // margin
+            using (var b = new SolidBrush(fill))
+                g.FillEllipse(b, m, m, size - m * 2, size - m * 2);
+
+            // subtle sheen on top half
+            using var sheen = new LinearGradientBrush(
+                new PointF(m, m), new PointF(m, (size - m * 2) / 2f + m),
+                Color.FromArgb(90, Color.White), Color.Transparent);
+            using var sheenPath = new GraphicsPath();
+            sheenPath.AddEllipse(m, m, size - m * 2, (size - m * 2) / 2);
+            g.FillPath(sheen, sheenPath);
+
+            return bmp;
+        }
+
+        /// <summary>
+        /// Generates a small colored-circle .ico for each color preset and saves them to
+        /// %LocalAppData%\FolderPainter\icons\. Called once during context-menu registration.
+        /// </summary>
+        public static void SavePresetIcons()
+        {
+            string iconDir = GetIconCacheDir();
+            foreach (var preset in Presets)
+            {
+                string icoPath = Path.Combine(iconDir, preset.Name + ".ico");
+                using var b32 = RenderColorCircle(preset.Fill, 32);
+                using var b16 = RenderColorCircle(preset.Fill, 16);
+                SaveMultiResIco(icoPath, new[] { b32, b16 });
             }
         }
 
